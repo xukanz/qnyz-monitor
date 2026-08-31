@@ -1,0 +1,56 @@
+# 青年驿站房源监控配置（复制为 config.yaml 后填写）
+# 数据来源：用户端公开接口 https://qnyz.shyouth.net/qnyzApi （无需登录/验证码）
+
+base_url: "https://qnyz.shyouth.net/qnyzApi"
+
+# SSL 证书校验：
+#   true                                  用 certifi 校验
+#   false                                 关闭校验
+#   "/etc/ssl/certs/ca-certificates.crt"  指定系统 CA bundle（企业 TLS 代理环境）
+# 当前 WSL 环境经企业 TLS 代理，需用系统 CA，故默认填系统 CA 路径。
+verify_ssl: "/etc/ssl/certs/ca-certificates.crt"
+
+# ── 轮询 ────────────────────────────────────────────────
+interval: 300          # 每轮间隔秒数（如 300 = 5 分钟）
+concurrency: 10        # 查询各驿站可预约日历的并发数
+
+# 是否查询每个驿站的可预约日历（applyNumber）：
+#   true  = 监控“真正可预约”的房源（推荐）
+#   false = 只看驿站列表和总房间数 houseCount，不查可约情况
+check_availability: true
+
+# ── 过滤条件 ────────────────────────────────────────────
+filters:
+  name: ""             # 驿站名关键字（服务端模糊匹配，如 "友间"）
+  user_type: 2         # 申请人类型（2=个人，一般不用改）
+
+  # 申请类型：
+  #   all       全部
+  #   personal  仅个人可申请（排除“仅供集体申请”的驿站）
+  #   group     仅供集体申请
+  apply_scope: "all"
+
+  # 区域过滤（客户端按区域名称过滤，可多选）。用 `--list-districts` 查看可选值。
+  # 例：["浦东新区", "徐汇区"]
+  districts: []
+
+  min_house_count: 0   # 只保留总房间数 >= 该值的驿站（0=不限）
+
+  # 可预约条件（check_availability=true 时生效）
+  min_apply_number: 1  # 某日期可预约数 >= 该值才算“可约”
+  date_from: ""        # 只关心该日期(含)之后，格式 YYYY-MM-DD，留空=不限
+  date_to: ""          # 只关心该日期(含)之前，留空=不限
+
+# ── 通知（Webhook）─────────────────────────────────────
+# type 可选: bark | serverchan | wecom | dingtalk | generic
+notify:
+  type: "bark"
+  # bark:       url 填 https://api.day.app/<你的key>
+  # serverchan: url 填 https://sctapi.ftqq.com/<SENDKEY>.send
+  # wecom:      url 填 企业微信机器人 webhook 完整地址
+  # dingtalk:   url 填 钉钉机器人 webhook 完整地址
+  # generic:    POST {"title":..., "text":...} 到 url
+  url: "https://api.day.app/你的key"
+
+# ── 日志 ────────────────────────────────────────────────
+log_file: "qnyz_monitor.log"

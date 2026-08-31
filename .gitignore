@@ -1,0 +1,5 @@
+config.yaml
+state.json
+*.log
+__pycache__/
+*.pyc
