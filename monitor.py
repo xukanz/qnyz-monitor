@@ -78,9 +78,14 @@ def get_stations(client, cfg):
     f = cfg.get("filters") or {}
     name = f.get("name", "")
     ut = to_int(f.get("user_type"), 2)
-    all_st = client.list_houses(name=name, user_type=ut, hous_type=1)
+    # 入住/离店日期传给接口 startTime/endTime，由服务器筛出“可住满整个区间”的驿站
+    # （与官网筛选逻辑一致）。
+    st, et = f.get("date_from", "") or "", f.get("date_to", "") or ""
+    all_st = client.list_houses(name=name, user_type=ut, hous_type=1,
+                                start_time=st, end_time=et)
     try:
-        personal = client.list_houses(name=name, user_type=ut, hous_type=0)
+        personal = client.list_houses(name=name, user_type=ut, hous_type=0,
+                                       start_time=st, end_time=et)
         pids = {s.get("id") for s in personal}
     except Exception as e:  # noqa: BLE001
         logger.warning("获取个人可申请列表失败，无法标记集体申请: %s", e)
@@ -136,16 +141,21 @@ def available_dates(client, house_id, cfg):
 
 
 # ── 展示 ──────────────────────────────────────────────────
-def fmt_notify(s, dates):
-    """通知用的精简单行：名称[区域] 可约N间 起始日期 电话。"""
-    total = sum(n for _, n in dates) if dates else 0
-    first = dates[0][0] if dates else ""
+def fmt_notify(s, dates, stay=None):
+    """通知用的精简单行：名称[区域] (入住区间/可约日期) 电话。"""
     seg = f"{s.get('name','(未知)')}"
     if s.get("district"):
         seg += f"[{s['district']}]"
-    seg += f" 可约{total}间"
-    if first:
-        seg += f" 起{first}"
+    if stay:  # 有入住/离店区间：显示可满足的区间
+        seg += f" 可住 {stay}"
+        if dates:  # 区间内最少房量
+            seg += f"(最少{min(n for _, n in dates)}间)"
+    else:      # 无区间：显示可约日期与总量
+        total = sum(n for _, n in dates) if dates else 0
+        first = dates[0][0] if dates else ""
+        seg += f" 可约{total}间"
+        if first:
+            seg += f" 起{first}"
     if s.get("lxfs"):
         seg += f" ☎{s['lxfs']}"
     return seg
@@ -176,6 +186,11 @@ def run_once(client, cfg, state, do_notify=True, persist=True, notify_gate=None)
     notify_gate: 可选回调，在真正推送/写状态前调用；返回 False 则本轮跳过
     推送与状态写入（用于旧配置线程被新配置取代时，避免用旧条件误推送）。
     """
+    f = cfg.get("filters") or {}
+    date_from = f.get("date_from", "") or ""
+    date_to = f.get("date_to", "") or ""
+    has_range = bool(date_from or date_to)
+
     stations = get_stations(client, cfg)
     stations = apply_filters(stations, cfg)
     logger.info("符合基础条件的驿站 %d 个，查询可预约情况…", len(stations))
@@ -189,7 +204,9 @@ def run_once(client, cfg, state, do_notify=True, persist=True, notify_gate=None)
             date_lists = list(ex.map(
                 lambda s: available_dates(client, s["id"], cfg), stations))
         for s, dates in zip(stations, date_lists):
-            if dates:
+            # 有入住/离店区间时：服务器已筛出“可住满整个区间”的驿站，列表内即合格
+            # （日历仅用于展示区间内每日房量）。无区间时：按日历逐日可约判定。
+            if has_range or dates:
                 results.append((s, dates))
     else:
         results = [(s, None) for s in stations]
@@ -198,11 +215,15 @@ def run_once(client, cfg, state, do_notify=True, persist=True, notify_gate=None)
     for s, dates in results:
         logger.info("可预约: %s", fmt_station(s, dates))
 
-    # 去重：对比上次已通知的日期集合，仅通知新增日期
+    # 去重：有区间时按“该驿站能否满足此入住区间”去重；无区间时按可约日期集合去重
+    stay_token = f"stay:{date_from}~{date_to}"
     new_hits = []
     for s, dates in results:
         sid = str(s["id"])
-        cur = sorted(d for d, _ in dates) if dates else ["_available_"]
+        if has_range:
+            cur = [stay_token]
+        else:
+            cur = sorted(d for d, _ in dates) if dates else ["_available_"]
         prev = set(state.get(sid, {}).get("dates", []))
         fresh = [d for d in cur if d not in prev]
         if fresh:
@@ -221,8 +242,12 @@ def run_once(client, cfg, state, do_notify=True, persist=True, notify_gate=None)
         return results, new_hits
 
     if new_hits and do_notify:
-        lines = [fmt_notify(s, dates) for s, dates, _ in new_hits]
-        title = f"青年驿站 {len(new_hits)} 处新增可预约"
+        stay = f"{date_from}→{date_to}" if has_range else None
+        lines = [fmt_notify(s, dates, stay=stay) for s, dates, _ in new_hits]
+        if has_range:
+            title = f"青年驿站 {len(new_hits)} 处可住 {date_from}→{date_to}"
+        else:
+            title = f"青年驿站 {len(new_hits)} 处新增可预约"
         body = "\n".join(lines)
         max_len = to_int(cfg.get("notify_max_len"), 1500)
         if len(body) > max_len:

@@ -13,7 +13,7 @@ logger = logging.getLogger("qnyz.client")
 
 
 class QnyzClient:
-    def __init__(self, base_url="https://qnyz.shyouth.net/qnyzApi", timeout=25, verify=True):
+    def __init__(self, base_url="https://qnyz.shyouth.net/qnyzApi", timeout=45, verify=True):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.verify = verify

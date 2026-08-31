@@ -36,10 +36,12 @@ filters:
 
   min_house_count: 0   # 只保留总房间数 >= 该值的驿站（0=不限）
 
-  # 可预约条件（check_availability=true 时生效）
-  min_apply_number: 1  # 某日期可预约数 >= 该值才算“可约”
-  date_from: ""        # 只关心该日期(含)之后，格式 YYYY-MM-DD，留空=不限
-  date_to: ""          # 只关心该日期(含)之前，留空=不限
+  # 入住/离店日期（格式 YYYY-MM-DD，留空=不限）
+  # 传给接口 startTime/endTime，由服务器筛出“可住满整个区间”的驿站（与官网一致）。
+  date_from: ""        # 入住日期
+  date_to: ""          # 离店日期
+
+  min_apply_number: 1  # 某日期可预约数 >= 该值才算“可约”（用于展示与无区间时判定）
 
 # ── 通知（Webhook）─────────────────────────────────────
 # type 可选: bark | serverchan | wecom | dingtalk | generic

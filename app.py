@@ -263,8 +263,8 @@ INDEX_HTML = """<!DOCTYPE html>
   <div class="card">
     <h3>筛选条件</h3>
     <div class="row" style="margin-bottom:12px">
-      <div class="field"><label>入住起始日期 (date_from)</label><input type="date" id="date_from"></div>
-      <div class="field"><label>入住结束日期 (date_to)</label><input type="date" id="date_to"></div>
+      <div class="field"><label>入住日期</label><input type="date" id="date_from"></div>
+      <div class="field"><label>离店日期</label><input type="date" id="date_to"></div>
       <div class="field"><label>每日可约数 ≥</label><input type="number" id="min_apply_number" value="1" min="1" style="width:90px"></div>
       <div class="field"><label>名称关键字</label><input type="text" id="name" placeholder="如 友间" style="width:140px"></div>
       <div class="field"><label>申请类型</label>
