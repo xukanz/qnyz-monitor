@@ -15,6 +15,15 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false        # 一组失败不影响另一组
+      matrix:
+        include:
+          - name: A            # 入住 9/5 → 离店 9/7
+            config: config.ci.a.yaml
+          - name: B            # 入住 9/7 → 离店 9/12
+            config: config.ci.b.yaml
+    name: check-${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,16 +34,16 @@ jobs:
       - name: Install deps
         run: pip install requests PyYAML
 
-      # 滚动缓存去重状态：主键唯一(必存)，restore-keys 取最近一次
-      - name: Restore dedup state
+      # 每组独立的去重缓存（key 前缀含组名，互不覆盖）
+      - name: Restore dedup state (${{ matrix.name }})
         uses: actions/cache@v4
         with:
           path: state.json
-          key: qnyz-state-${{ github.run_id }}
+          key: qnyz-state-${{ matrix.name }}-${{ github.run_id }}
           restore-keys: |
-            qnyz-state-
+            qnyz-state-${{ matrix.name }}-
 
-      - name: Run check
+      - name: Run check (${{ matrix.name }})
         env:
           QNYZ_NOTIFY_URL: ${{ secrets.BARK_URL }}
-        run: python monitor.py --once --config config.ci.yaml
+        run: python monitor.py --once --config ${{ matrix.config }}

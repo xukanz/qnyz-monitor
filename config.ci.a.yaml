@@ -1,0 +1,23 @@
+# GitHub Actions 监控组 A：入住 9/5 → 离店 9/7，仅个人，全区
+# 不含密钥；Bark key 由 Actions Secret（BARK_URL）注入。
+
+base_url: "https://qnyz.shyouth.net/qnyzApi"
+verify_ssl: false
+check_availability: true
+concurrency: 10
+
+filters:
+  name: ""
+  user_type: 2
+  apply_scope: "personal"
+  districts: []
+  date_from: "2026-09-05"
+  date_to: "2026-09-07"
+  min_house_count: 0
+  min_apply_number: 1
+
+notify:
+  type: "bark"
+  url: ""          # 由环境变量 QNYZ_NOTIFY_URL 注入
+
+log_file: ""

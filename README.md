@@ -82,9 +82,9 @@ python app.py                 # 默认 http://127.0.0.1:8765
    ```
    或网页：仓库 → Settings → Secrets and variables → Actions → New repository secret，Name 填 `BARK_URL`。
    > Secret 加密存储、不可读回、不进代码；工作流运行时注入为环境变量 `QNYZ_NOTIFY_URL`。
-   > 用其他通知渠道：把 `BARK_URL` 填成对应 webhook，并在 `config.ci.yaml` 改 `notify.type`（bark/serverchan/wecom/dingtalk/generic）。
+   > 用其他通知渠道：把 `BARK_URL` 填成对应 webhook，并在对应 `config.ci.*.yaml` 改 `notify.type`（bark/serverchan/wecom/dingtalk/generic）。
 
-3. **改监控条件**：编辑 `config.ci.yaml`（区域 `districts`、入住/离店 `date_from`/`date_to`、申请类型 `apply_scope` 等），`git push` 即生效。
+3. **改监控条件**：编辑对应的 `config.ci.*.yaml`（区域 `districts`、入住/离店 `date_from`/`date_to`、申请类型 `apply_scope` 等），`git push` 即生效。
 
 4. **改检查频率**：编辑 `.github/workflows/monitor.yml` 里的 cron（默认 `*/10 * * * *` 每 10 分钟）。
 
@@ -96,8 +96,28 @@ python app.py                 # 默认 http://127.0.0.1:8765
    ```
    也可在仓库 **Actions** 页面点 Run workflow / Enable / Disable。
 
+### 同时监控多组条件（matrix）
+
+工作流用 `strategy.matrix` 并行跑多组条件，每组一个配置文件、**各自独立的去重缓存**（key 前缀含组名，互不覆盖）。内置两组示例：
+
+- `config.ci.a.yaml` — A 组
+- `config.ci.b.yaml` — B 组
+
+**增删组**：在 `.github/workflows/monitor.yml` 的 `matrix.include` 里加/减一项，并配一个对应的 `config.ci.<名>.yaml`：
+```yaml
+matrix:
+  include:
+    - name: A
+      config: config.ci.a.yaml
+    - name: B
+      config: config.ci.b.yaml
+    # - name: C            # 再加一组就照这样加
+    #   config: config.ci.c.yaml
+```
+> 各组推送标题自带入住/离店日期，手机上可区分是哪组。
+
 **说明与注意：**
-- 去重状态 `state.json` 用 `actions/cache` 跨次保存（滚动缓存），因此定时版同样"只推新增、不重复"。
+- 去重状态 `state.json` 用 `actions/cache` 跨次保存（滚动缓存），因此定时版同样"只推新增、不重复"；每组用独立缓存 key（`qnyz-state-<组名>-`）。
 - GitHub 定时任务**不保证准点**，高峰期常延迟几分钟，`*/10` 实际间隔会有波动。
 - 仓库 **60 天无提交**会被 GitHub 自动停用定时任务，重新 enable 或偶尔 push 一下即可保活。
 - `config.ci.yaml` 里 `verify_ssl: false`：CI 环境为公开只读数据，关闭证书校验以规避潜在证书链问题；本地如需校验可用 `config.yaml` 单独设置。
@@ -120,5 +140,5 @@ zujin(租金), mianji(面积), peitaosheshi(配套), blurb(简介), longitude/la
 - `notifier.py` — Webhook 推送
 - `monitor.py` — 轮询主循环 + 过滤 + 去重 + 通知（CLI 与网页共用 `run_once`）
 - `config.example.yaml` — 本地配置模板（复制为 `config.yaml`）
-- `config.ci.yaml` — GitHub Actions 用配置（不含密钥）
-- `.github/workflows/monitor.yml` — 定时监控工作流
+- `config.ci.a.yaml` / `config.ci.b.yaml` — GitHub Actions 各组配置（不含密钥）
+- `.github/workflows/monitor.yml` — 定时监控工作流（matrix 并行多组）
