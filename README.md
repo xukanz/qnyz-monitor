@@ -86,7 +86,7 @@ python app.py                 # 默认 http://127.0.0.1:8765
 
 3. **改监控条件**：编辑对应的 `config.ci.*.yaml`（区域 `districts`、入住/离店 `date_from`/`date_to`、申请类型 `apply_scope` 等），`git push` 即生效。
 
-4. **改检查频率**：编辑 `.github/workflows/monitor.yml` 里的 cron（默认 `*/10 * * * *` 每 10 分钟）。
+4. **定时怎么来**：见下面「定时触发（重要）」——本仓库实测 GitHub 自带 `schedule` 不触发，实际用外部服务调 API。
 
 5. **启用 / 手动触发 / 停用**：
    ```bash
@@ -95,6 +95,40 @@ python app.py                 # 默认 http://127.0.0.1:8765
    gh workflow disable monitor.yml --repo <你的用户名>/qnyz-monitor   # 暂停
    ```
    也可在仓库 **Actions** 页面点 Run workflow / Enable / Disable。
+
+### 定时触发（重要）
+
+**GitHub 自带的 `schedule` 不可靠。** 本仓库实测：`*/10` 和每 30 分钟的 cron **一次都没触发过**（GitHub 官方明确说 schedule 不保证执行，高频 cron 常被整体跳过）。工作流里保留 `schedule` 只作备份。
+
+**实际做法：用外部定时服务按间隔调用 GitHub API 触发 `workflow_dispatch`。**
+
+1. **创建细粒度 PAT**：https://github.com/settings/personal-access-tokens/new
+   - Repository access → Only select repositories → 选本仓库
+   - Permissions → Repository permissions → **Actions: Read and write**（其他都不给）
+   - 生成后复制 `github_pat_...`（只显示一次）
+
+2. **在定时服务里建任务**（如 https://cron-job.org ，免费）：
+
+   | 项 | 值 |
+   |---|---|
+   | URL | `https://api.github.com/repos/<你的用户名>/qnyz-monitor/actions/workflows/monitor.yml/dispatches` |
+   | Method | `POST` |
+   | Schedule | 按需，如每 5 / 10 分钟 |
+   | Body | `{"ref":"main"}` |
+
+   Request headers：
+   ```
+   Accept: application/vnd.github+json
+   Authorization: Bearer github_pat_你的token
+   X-GitHub-Api-Version: 2022-11-28
+   Content-Type: application/json
+   ```
+
+   成功时 GitHub 返回 **204 No Content**（无响应体即正常）。
+
+> - PAT 等同密码：只放在定时服务的配置里，**不要提交进仓库**；泄露就去 GitHub 设置 Revoke。
+> - PAT **到期后定时会静默失效**（定时服务会显示 401），记得续期。
+> - 改监控条件只需改 `config.ci.*.yaml` 并 push，**无需改动定时服务**。
 
 ### 同时监控多组条件（matrix）
 
