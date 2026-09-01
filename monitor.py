@@ -156,8 +156,6 @@ def fmt_notify(s, dates, stay=None):
         seg += f" 可约{total}间"
         if first:
             seg += f" 起{first}"
-    if s.get("lxfs"):
-        seg += f" ☎{s['lxfs']}"
     return seg
 
 
