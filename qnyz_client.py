@@ -14,9 +14,11 @@ logger = logging.getLogger("qnyz.client")
 
 
 class QnyzClient:
-    def __init__(self, base_url="https://qnyz.shyouth.net/qnyzApi", timeout=45,
-                 verify=True, retries=3, backoff=3):
+    def __init__(self, base_url="https://qnyz.shyouth.net/qnyzApi", timeout=(15, 45),
+                 verify=True, retries=4, backoff=5):
         self.base_url = base_url.rstrip("/")
+        # timeout 可为 (连接超时, 读取超时)：连接超时设短些，
+        # 这样对方不通时能快速失败并重试，而不是干等 45 秒。
         self.timeout = timeout
         self.verify = verify
         self.retries = retries      # 网络抖动/超时时的重试次数

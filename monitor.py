@@ -15,10 +15,15 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import requests
 import yaml
 
 from notifier import send as notify_send
 from qnyz_client import QnyzClient
+
+# 视为“临时网络问题”的异常：不算运行失败，等下一轮重试
+REQUEST_ERRORS = (requests.exceptions.Timeout,
+                  requests.exceptions.ConnectionError)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = os.path.join(HERE, "config.yaml")
@@ -278,6 +283,8 @@ def main():
     ap.add_argument("--raw", action="store_true", help="配合 --once，打印驿站列表原始 JSON")
     ap.add_argument("--list-districts", action="store_true", help="打印当前所有区域名称后退出")
     ap.add_argument("--no-notify", action="store_true", help="不发送通知（调试）")
+    ap.add_argument("--strict", action="store_true",
+                    help="网络错误时以非零码退出（默认视为本轮跳过，不算失败）")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -309,7 +316,14 @@ def main():
     state = load_state()
 
     if args.once:
-        run_once(client, cfg, state, do_notify=not args.no_notify)
+        try:
+            run_once(client, cfg, state, do_notify=not args.no_notify)
+        except REQUEST_ERRORS as e:
+            # 对方站点偶发不可达：视为“本轮跳过”，不算失败。
+            # 定时任务下一轮会重试，避免 CI 因网络抖动频繁标红。
+            logger.warning("网络不可达，本轮跳过（下一轮会重试）: %s", type(e).__name__)
+            if args.strict:
+                raise
         return
 
     interval = to_int(cfg.get("interval"), 300)
