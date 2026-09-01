@@ -1,0 +1,35 @@
+# GitHub Actions 定时监控用配置（不含密钥；Bark key 由 Actions Secret 注入）
+# 修改此文件并 push 即可调整监控条件。
+
+base_url: "https://qnyz.shyouth.net/qnyzApi"
+
+# CI 环境无企业 TLS 代理；数据为公开只读，用 false 规避潜在证书链问题最稳妥。
+verify_ssl: false
+
+check_availability: true
+concurrency: 10
+
+# ── 筛选条件（按需修改后 push）──────────────────────────
+filters:
+  name: ""             # 驿站名关键字
+  user_type: 2
+  apply_scope: "personal"   # all | personal | group
+
+  districts: []        # 例：["浦东新区","徐汇区"]，留空=全部区
+
+  # 入住/离店日期（YYYY-MM-DD，留空=不限）。传给接口 startTime/endTime，
+  # 服务器筛出可住满整个区间的驿站（与官网一致）。
+  date_from: ""
+  date_to: ""
+
+  min_house_count: 0
+  min_apply_number: 1
+
+# ── 通知 ────────────────────────────────────────────────
+# url 留空：由环境变量 QNYZ_NOTIFY_URL（Actions Secret: BARK_URL）注入。
+notify:
+  type: "bark"
+  url: ""
+
+# CI 只输出到 stdout（Actions 日志），不写文件
+log_file: ""

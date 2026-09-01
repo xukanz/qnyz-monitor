@@ -283,6 +283,12 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    # 环境变量覆盖（供 GitHub Actions 等场景注入密钥，避免写进仓库）
+    if os.environ.get("QNYZ_NOTIFY_URL"):
+        cfg.setdefault("notify", {})
+        cfg["notify"]["url"] = os.environ["QNYZ_NOTIFY_URL"]
+        if os.environ.get("QNYZ_NOTIFY_TYPE"):
+            cfg["notify"]["type"] = os.environ["QNYZ_NOTIFY_TYPE"]
     setup_logging(cfg.get("log_file"))
 
     client = QnyzClient(

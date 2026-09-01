@@ -1,0 +1,40 @@
+name: qnyz-monitor
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 每 10 分钟（GitHub 定时任务常有延迟，属正常）
+  workflow_dispatch: {}       # 支持手动触发
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qnyz-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install requests PyYAML
+
+      # 滚动缓存去重状态：主键唯一(必存)，restore-keys 取最近一次
+      - name: Restore dedup state
+        uses: actions/cache@v4
+        with:
+          path: state.json
+          key: qnyz-state-${{ github.run_id }}
+          restore-keys: |
+            qnyz-state-
+
+      - name: Run check
+        env:
+          QNYZ_NOTIFY_URL: ${{ secrets.BARK_URL }}
+        run: python monitor.py --once --config config.ci.yaml
