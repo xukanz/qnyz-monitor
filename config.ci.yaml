@@ -19,8 +19,8 @@ filters:
 
   # 入住/离店日期（YYYY-MM-DD，留空=不限）。传给接口 startTime/endTime，
   # 服务器筛出可住满整个区间的驿站（与官网一致）。
-  date_from: ""
-  date_to: ""
+  date_from: "2026-09-05"
+  date_to: "2026-09-07"
 
   min_house_count: 0
   min_apply_number: 1
