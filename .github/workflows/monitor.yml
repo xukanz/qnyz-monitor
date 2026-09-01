@@ -1,17 +1,16 @@
 name: qnyz-monitor
 
 on:
-  # ⚠️ 实际定时不靠这里：本仓库实测 GitHub 自带 schedule 从未触发过
-  # （官方不保证执行，高频 cron 常被整体跳过）。保留它仅作备份，
-  # 万一哪天 GitHub 正常触发就当多跑几次，不影响下面的外部触发。
+  # ⚠️ GitHub 自带 schedule 已注释停用：本仓库实测它从未触发过
+  # （官方不保证执行，高频 cron 常被整体跳过）。想试可取消下面两行注释。
   #
   # 真正的定时由【外部服务】(如 cron-job.org) 按固定间隔调用 GitHub API：
   #   POST https://api.github.com/repos/<owner>/<repo>/actions/workflows/monitor.yml/dispatches
   #   headers: Authorization: Bearer <PAT>, Accept: application/vnd.github+json
   #   body:    {"ref":"main"}
   # 该调用走的是下面的 workflow_dispatch 入口。详见 README。
-  schedule:
-    - cron: "7,37 * * * *"
+  # schedule:
+  #   - cron: "7,37 * * * *"
   workflow_dispatch: {}       # 手动触发 + 外部 API 定时触发（实际生效的入口）
 
 permissions:
