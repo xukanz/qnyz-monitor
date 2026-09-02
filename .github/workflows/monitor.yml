@@ -1,17 +1,22 @@
 name: qnyz-monitor
 
 on:
-  # ⚠️ GitHub 自带 schedule 已注释停用：本仓库实测它从未触发过
-  # （官方不保证执行，高频 cron 常被整体跳过）。想试可取消下面两行注释。
+  # 定时有两条路，二选一，当前用的是【首选】。详见 README「定时触发」。
   #
-  # 真正的定时由【外部服务】(如 cron-job.org) 按固定间隔调用 GitHub API：
-  #   POST https://api.github.com/repos/<owner>/<repo>/actions/workflows/monitor.yml/dispatches
-  #   headers: Authorization: Bearer <PAT>, Accept: application/vnd.github+json
-  #   body:    {"ref":"main"}
-  # 该调用走的是下面的 workflow_dispatch 入口。详见 README。
+  # 【首选】外部定时服务（如 cron-job.org）按固定间隔调 GitHub API，走下面的
+  #   workflow_dispatch 入口。准点，间隔可低至 5 分钟：
+  #     POST https://api.github.com/repos/<owner>/<repo>/actions/workflows/monitor.yml/dispatches
+  #     headers: Authorization: Bearer <PAT>, Accept: application/vnd.github+json
+  #     body:    {"ref":"main"}
+  #
+  # 【替代】用不了外部服务时（不想配 PAT、定时服务停了或要收费），取消下面两行
+  #   注释改用 GitHub 自带 schedule，并把外部服务那边的任务停掉——两条路没必要
+  #   同时开，同时开只是多跑几遍（去重状态共用，不会重复推）。
+  #   注意 schedule 不保证执行：本仓库实测 */10 和每 30 分钟的 cron 一次都没触发
+  #   过，频率越低越可能真的跑起来，所以这里给的是每小时。
   # schedule:
-  #   - cron: "7,37 * * * *"
-  workflow_dispatch: {}       # 手动触发 + 外部 API 定时触发（实际生效的入口）
+  #   - cron: "23 * * * *"
+  workflow_dispatch: {}       # 手动触发 + 外部服务定时触发（首选入口）
 
 permissions:
   contents: read
@@ -27,7 +32,7 @@ jobs:
       fail-fast: false        # 一组失败不影响另一组
       matrix:
         include:
-          - name: A            # 入住 9/5 → 离店 9/7
+          - name: A            # 入住 9/5 → 离店 9/12，只盯友间宁国路
             config: config.ci.a.yaml
           # 暂停：恢复时取消下面两行注释
           # - name: B
