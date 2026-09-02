@@ -4,6 +4,7 @@
   python monitor.py --once             跑一次，打印可预约房源
   python monitor.py --once --raw       跑一次，打印驿站列表原始 JSON
   python monitor.py --list-districts    打印当前所有区域名称后退出
+  python monitor.py --list-stations     打印所有驿站的 id/名称/区域后退出
   python monitor.py                     按 config.yaml 持续轮询监控
 """
 
@@ -101,13 +102,24 @@ def get_stations(client, cfg):
 
 
 # ── 过滤 ──────────────────────────────────────────────────
+def match_only(s, keys):
+    """驿站是否命中白名单：id 完全相等，或名称包含该关键字。"""
+    sid = str(s.get("id", ""))
+    name = s.get("name") or ""
+    return any(k == sid or k in name for k in keys)
+
+
 def apply_filters(stations, cfg):
     f = cfg.get("filters") or {}
     districts = [d for d in (f.get("districts") or []) if d]
+    # 只盯指定的一家/几家：驿站名关键字或 id，留空=不限
+    only = [str(x).strip() for x in (f.get("only_stations") or []) if str(x).strip()]
     min_house_count = to_int(f.get("min_house_count"), 0)
     scope = (f.get("apply_scope") or "all").lower()  # all|personal|group
     out = []
     for s in stations:
+        if only and not match_only(s, only):
+            continue
         if districts and s.get("district") not in districts:
             continue
         if min_house_count and (to_int(s.get("houseCount"), 0) < min_house_count):
@@ -282,6 +294,8 @@ def main():
     ap.add_argument("--once", action="store_true", help="只跑一次")
     ap.add_argument("--raw", action="store_true", help="配合 --once，打印驿站列表原始 JSON")
     ap.add_argument("--list-districts", action="store_true", help="打印当前所有区域名称后退出")
+    ap.add_argument("--list-stations", action="store_true",
+                    help="打印所有驿站的 id/名称/区域后退出（帮助填 only_stations）")
     ap.add_argument("--no-notify", action="store_true", help="不发送通知（调试）")
     ap.add_argument("--strict", action="store_true",
                     help="网络错误时以非零码退出（默认视为本轮跳过，不算失败）")
@@ -306,6 +320,11 @@ def main():
         from collections import Counter
         for d, c in Counter(s.get("district") for s in stations).most_common():
             print(f"{d}\t{c}")
+        return
+
+    if args.list_stations:
+        for s in client.list_houses():
+            print(f"{s.get('id')}\t{s.get('name')}\t{s.get('district')}")
         return
 
     if args.raw:

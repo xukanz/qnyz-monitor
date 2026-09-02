@@ -26,7 +26,8 @@ cp config.example.yaml config.yaml
 关键配置项：
 - `check_availability`：`true` 监控真正可预约（查每个驿站日历），`false` 只看列表/总房间数。
 - `filters.districts`：按区域名过滤，如 `["浦东新区","徐汇区"]`（用 `--list-districts` 查可选值）。
-- `filters.name`：驿站名关键字（服务端模糊匹配）。
+- `filters.name`：驿站名关键字（服务端模糊匹配，只能填一个）。
+- `filters.only_stations`：只盯指定的一家/几家，如 `["友间","1024"]`。每项可写驿站名关键字（名称包含即命中）或驿站 id（完全相等），留空=不限（用 `--list-stations` 查 id/名称）。
 - `filters.apply_scope`：申请类型 —— `all` 全部 / `personal` 仅个人可申请（排除仅集体）/ `group` 仅供集体申请。
   （判定方式：`housType=1` 返回全部房源，`housType=0` 返回可供个人申请房源，差集即“仅供集体申请”。网页表格会给这些驿站打「仅集体」标。）
 - `filters.min_apply_number` / `date_from` / `date_to`：可预约的数量与日期范围。
@@ -37,6 +38,9 @@ cp config.example.yaml config.yaml
 ```bash
 # 查看当前所有区域（帮助填 districts）
 python monitor.py --list-districts
+
+# 查看所有驿站的 id/名称/区域（帮助填 only_stations）
+python monitor.py --list-stations
 
 # 跑一次：打印当前可预约的驿站
 python monitor.py --once --no-notify
@@ -62,7 +66,8 @@ python app.py                 # 默认 http://127.0.0.1:8765
 ```
 
 打开 `http://127.0.0.1:8765`：
-- **筛选条件**：入住起止日期、每日可约数下限、名称关键字、轮询间隔、区域多选。
+- **筛选条件**：入住起止日期、每日可约数下限、申请类型、轮询间隔、区域多选。
+- **指定驿站**：可勾选只盯某一家或某几家（不勾=全部）。列表带搜索框，并跟着区域/申请类型实时收窄；因条件变化而不再符合的会自动取消勾选。网页不提供「名称关键字」，按名字筛用这里勾选即可（`filters.name` 仍供 CLI / Actions 使用）。
 - **🔍 预览当前可约**：立即按条件查询并列表展示（不发通知、不影响去重状态）。
 - **▶ 启动监控 / ⏹ 停止监控**：后台按间隔轮询，命中新增可预约就走 Bark 推送。
 - 状态区显示运行中/已停止、上次检查时间、可约驿站数、本轮新增数。

@@ -145,6 +145,9 @@ def build_cfg(overrides):
     o = overrides or {}
     if "districts" in o:
         filters["districts"] = [d for d in (o.get("districts") or []) if d]
+    if "only_stations" in o:
+        filters["only_stations"] = [str(x).strip() for x in (o.get("only_stations") or [])
+                                    if str(x).strip()]
     for k in ("name", "date_from", "date_to", "apply_scope"):
         if k in o:
             filters[k] = o.get(k) or ("all" if k == "apply_scope" else "")
@@ -167,6 +170,24 @@ def api_districts():
     stations = client.list_houses()
     counts = Counter(s.get("district") for s in stations if s.get("district"))
     return jsonify([{"name": d, "count": c} for d, c in counts.most_common()])
+
+
+@app.get("/api/stations")
+def api_stations():
+    """全部驿站的 id/名称/区域/是否仅集体，供网页勾选「只盯这几家」。
+
+    这里不带任何过滤条件、一次取全量并标好 groupOnly；区域与申请类型的筛选
+    由前端就地做，这样改条件时列表立刻跟着变，不必重新请求较慢的上游接口。
+    """
+    cfg = M.load_config(M.DEFAULT_CONFIG)
+    client = QnyzClient(base_url=cfg.get("base_url", "https://qnyz.shyouth.net/qnyzApi"),
+                        verify=cfg.get("verify_ssl", True))
+    ut = (cfg.get("filters") or {}).get("user_type", 2)
+    out = [{"id": s.get("id"), "name": s.get("name"), "district": s.get("district"),
+            "groupOnly": bool(s.get("groupOnly"))}
+           for s in M.get_stations(client, {"filters": {"user_type": ut}})]
+    out.sort(key=lambda x: (x["district"] or "", x["name"] or ""))
+    return jsonify(out)
 
 
 @app.get("/api/status")
@@ -238,6 +259,13 @@ INDEX_HTML = """<!DOCTYPE html>
   .districts label { display:flex; align-items:center; gap:6px; padding:5px 7px;
      border:1px solid var(--bd); border-radius:7px; cursor:pointer; }
   .districts label:hover { background:#f0f4fa; }
+  /* 驿站有一百多个，放进可滚动区并配搜索框 */
+  .stations { display:grid; grid-template-columns: repeat(auto-fill, minmax(230px,1fr)); gap:6px;
+     max-height:210px; overflow:auto; border:1px solid var(--bd); border-radius:8px; padding:8px; }
+  .stations label { display:flex; align-items:center; gap:6px; padding:4px 6px;
+     border-radius:6px; cursor:pointer; }
+  .stations label:hover { background:#f0f4fa; }
+  .b-mini { background:#4a5568; padding:7px 14px; }
   .btns { display:flex; gap:10px; flex-wrap:wrap; }
   button { border:0; border-radius:8px; padding:9px 18px; font-size:14px; cursor:pointer; color:#fff; }
   .b-prev { background:#4a5568; } .b-start { background:var(--ok); } .b-stop { background:var(--stop); }
@@ -266,7 +294,6 @@ INDEX_HTML = """<!DOCTYPE html>
       <div class="field"><label>入住日期</label><input type="date" id="date_from"></div>
       <div class="field"><label>离店日期</label><input type="date" id="date_to"></div>
       <div class="field"><label>每日可约数 ≥</label><input type="number" id="min_apply_number" value="1" min="1" style="width:90px"></div>
-      <div class="field"><label>名称关键字</label><input type="text" id="name" placeholder="如 友间" style="width:140px"></div>
       <div class="field"><label>申请类型</label>
         <select id="apply_scope" style="padding:7px 9px;border:1px solid var(--bd);border-radius:7px;font-size:14px">
           <option value="all">全部</option>
@@ -278,6 +305,14 @@ INDEX_HTML = """<!DOCTYPE html>
     </div>
     <label>区域（不选=全部）</label>
     <div class="districts" id="districts" style="margin-top:8px"></div>
+
+    <label style="display:block;margin-top:16px">指定驿站（不选=全部，列表随上面的区域 / 申请类型变化）
+      <span class="muted" id="stationCount"></span></label>
+    <div class="row" style="margin:8px 0">
+      <input type="text" id="stationSearch" placeholder="搜索驿站名 / 区域" style="flex:1;min-width:200px">
+      <button type="button" class="b-mini" id="btnClearStations">清空所选</button>
+    </div>
+    <div class="stations" id="stations"><span class="muted">加载中…</span></div>
   </div>
 
   <div class="card">
@@ -309,13 +344,19 @@ function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("sh
 function selectedDistricts(){
   return [...document.querySelectorAll("#districts input:checked")].map(x=>x.value);
 }
+function selectedStations(){
+  return [...document.querySelectorAll("#stations input:checked")].map(x=>x.value);
+}
 function params(){
   return {
     districts: selectedDistricts(),
+    only_stations: selectedStations(),
     date_from: $("#date_from").value,
     date_to: $("#date_to").value,
     min_apply_number: $("#min_apply_number").value,
-    name: $("#name").value,
+    // 网页不提供「名称关键字」：按名字筛统一用下面的「指定驿站」勾选。
+    // 这里显式传空，避免 config.yaml 里的 filters.name 变成界面上看不见的隐藏条件。
+    name: "",
     apply_scope: $("#apply_scope").value,
     interval: $("#interval").value,
   };
@@ -325,7 +366,58 @@ async function loadDistricts(){
   $("#districts").innerHTML = list.map(d =>
     `<label><input type="checkbox" value="${d.name}">${d.name} <span class="muted">(${d.count})</span></label>`
   ).join("");
+  $("#districts").onchange = syncStationList;   // 选区域时，下面的驿站列表跟着收窄
 }
+let allStations = [];    // /api/stations 的全量列表，条件筛选在前端就地做
+
+function stationAllowed(s){
+  const scope = $("#apply_scope").value;
+  if (scope === "personal" && s.groupOnly) return false;
+  if (scope === "group" && !s.groupOnly) return false;
+  const ds = selectedDistricts();
+  return !ds.length || ds.includes(s.district);
+}
+// 区域/申请类型变化 → 重新决定哪些驿站可选；搜索框只在可选项里再过滤一层。
+// 因条件变化而不再可选的驿站会自动取消勾选（否则会留下看不见的已选项）。
+function syncStationList(){
+  const q = $("#stationSearch").value.trim().toLowerCase();
+  let shown = 0, dropped = 0;
+  document.querySelectorAll("#stations label").forEach(l => {
+    const ok = stationAllowed(allStations[+l.dataset.i]);
+    const cb = l.querySelector("input");
+    if (!ok && cb.checked) { cb.checked = false; dropped++; }
+    const visible = ok && (!q || l.dataset.k.includes(q));
+    l.style.display = visible ? "" : "none";
+    if (visible) shown++;
+  });
+  updateStationCount(shown);
+  if (dropped) toast(`${dropped} 家不符合新条件，已取消勾选`);
+}
+function updateStationCount(shown){
+  const n = selectedStations().length;
+  const sel = n ? `已选 ${n} 家 · ` : "";
+  $("#stationCount").textContent = `— ${sel}当前条件下 ${shown} 家可选`;
+}
+async function loadStations(){
+  const r = await fetch("/api/stations"); allStations = await r.json();
+  // 勾选值用 id：名称可能重复，id 在 only_stations 里是精确匹配
+  $("#stations").innerHTML = allStations.map((s, i) =>
+    `<label data-i="${i}" data-k="${(s.name+" "+(s.district||"")).toLowerCase()}">
+       <input type="checkbox" value="${s.id}">
+       <span>${s.name||""} <span class="muted">${s.district||""}</span>${
+         s.groupOnly ? ' <span class="tag" style="background:#fff5f5;color:#c53030">仅集体</span>' : ''
+       }</span></label>`
+  ).join("");
+  $("#stations").onchange = () => updateStationCount(
+    [...document.querySelectorAll("#stations label")].filter(l => l.style.display !== "none").length);
+  syncStationList();
+}
+$("#stationSearch").oninput = syncStationList;
+$("#apply_scope").onchange = syncStationList;
+$("#btnClearStations").onclick = () => {
+  document.querySelectorAll("#stations input:checked").forEach(x => x.checked = false);
+  syncStationList();
+};
 function renderStatus(st){
   const dot = st.running ? '<span class="dot on"></span>运行中' : '<span class="dot off"></span>已停止';
   $("#status").innerHTML = `
@@ -387,7 +479,7 @@ $("#btnStart").onclick = async () => {
 $("#btnStop").onclick = async () => {
   const j = await (await fetch("/api/stop",{method:"POST"})).json(); toast(j.msg); refreshStatus();
 };
-loadDistricts(); refreshStatus(); setInterval(refreshStatus, 5000);
+loadDistricts(); loadStations(); refreshStatus(); setInterval(refreshStatus, 5000);
 </script>
 </body>
 </html>"""

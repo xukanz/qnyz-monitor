@@ -11,6 +11,7 @@ filters:
   user_type: 2
   apply_scope: "personal"
   districts: []
+  only_stations: ["友间公寓宁国路社区青年驿站"]
   date_from: "2026-09-05"
   date_to: "2026-09-12"
   min_house_count: 0
