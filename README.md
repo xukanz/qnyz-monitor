@@ -3,6 +3,7 @@
 定时监控上海青年驿站（`qnyz.shyouth.net` 用户端）的**可预约房源**，按条件过滤，发现新增可预约时通过 Webhook 推送到手机。
 
 > 数据来自用户端**公开接口** `https://qnyz.shyouth.net/qnyzApi`，**无需登录、无需验证码**：
+>
 > - `POST /hous/housListBatch` — 驿站列表（名称、区域、地址、总房间数等）
 > - `GET  /hous/calendar?id=` — 某驿站每日可预约数量 `applyNumber`（即“剩余房源”）
 
@@ -10,21 +11,30 @@
 
 命中后手机上收到的 Bark 通知——标题是「N 处可住 + 入住/离店区间」，正文一行一个驿站，带区域和该区间内的最少房量：
 
-<img src="docs/bark-notify.png" width="480" alt="Bark 推送截图">
+<table>
+  <tr>
+    <td align="center">通知横幅</td>
+    <td align="center">Bark App 内的消息历史</td>
+  </tr>
+  <tr>
+    <td><img src="docs/bark-notify.png" width="400" alt="Bark 通知横幅"></td>
+    <td><img src="docs/bark-history.png" width="330" alt="Bark 消息历史"></td>
+  </tr>
+</table>
 
-三条各自独立，是三轮检查分别发现的新增；同一轮里命中多家会合并成一条。同一家驿站、同一个日期区间只推一次，不会重复轰炸（见「[去重逻辑](#去重逻辑)」）。
+11:05、11:10、11:20 三条各自独立，是三轮检查分别发现的新增（外部定时每 5 分钟触发一次）；同一轮里命中多家会合并成一条。同一家驿站、同一个日期区间只推一次，不会重复轰炸（见「[去重逻辑](#去重逻辑)」）。
 
 ## 两种用法，二选一
 
-| | [用法一：本地运行](#用法一本地运行) | [用法二：GitHub Actions](#用法二github-actions电脑关机也能推送) |
-|---|---|---|
-| 跑在哪 | 自己的电脑 | GitHub 的服务器 |
-| 电脑关机 | 停 | 照跑 |
-| 配置文件 | `config.yaml`（本地，不进仓库） | `config.ci.*.yaml`（进仓库，不含密钥） |
-| Bark key 放哪 | 直接写在 `config.yaml` 里 | 仓库 Secret `BARK_URL` |
-| 定时怎么来 | 程序自己循环（`interval` 秒） | 外部定时服务调 GitHub API |
-| 有图形界面吗 | 有，网页控制台 | 没有，改 YAML |
-| 适合 | 调条件、临时盯几小时 | 长期挂着 |
+|               | [用法一：本地运行](#用法一本地运行) | [用法二：GitHub Actions](#用法二github-actions电脑关机也能推送) |
+| ------------- | ---------------------------------- | -------------------------------------------------------------- |
+| 跑在哪        | 自己的电脑                         | GitHub 的服务器                                                |
+| 电脑关机      | 停                                 | 照跑                                                           |
+| 配置文件      | `config.yaml`（本地，不进仓库）  | `config.ci.*.yaml`（进仓库，不含密钥）                       |
+| Bark key 放哪 | 直接写在`config.yaml` 里         | 仓库 Secret`BARK_URL`                                        |
+| 定时怎么来    | 程序自己循环（`interval` 秒）    | 外部定时服务调 GitHub API                                      |
+| 有图形界面吗  | 有，网页控制台                     | 没有，改 YAML                                                  |
+| 适合          | 调条件、临时盯几小时               | 长期挂着                                                       |
 
 两者互不依赖：**只用 Actions 的话不需要建 `config.yaml`**，反之亦然。
 
@@ -40,7 +50,7 @@
   （判定方式：`housType=1` 返回全部房源，`housType=0` 返回可供个人申请房源，差集即“仅供集体申请”。网页表格会给这些驿站打「仅集体」标。）
 - `filters.date_from` / `date_to`：入住 / 离店日期。
 - `filters.min_apply_number` / `min_house_count`：可预约数量、总房间数的下限。
-- `notify.type`：`bark` / `serverchan` / `wecom` / `dingtalk` / `generic`。
+- `notify.type` / `notify.url`：推送渠道和地址，见下面「[通知渠道](#通知渠道两种用法通用)」。
 
 **三个容易搞错的地方：**
 
@@ -55,6 +65,52 @@ python monitor.py --list-districts                          # 所有区域 + 各
 python monitor.py --list-stations                           # 所有驿站的 id / 名称 / 区域
 python monitor.py --list-stations --config config.ci.a.yaml # 没有 config.yaml 时指定一个配置文件
 ```
+
+## 通知渠道（两种用法通用）
+
+### Bark（iOS，推荐）
+
+1. **装 App**：App Store 搜「Bark」，免费。
+2. **拿到你的推送地址**：打开 App，首页顶部就是一条 `https://api.day.app/xxxxxxxxxxxx/`，点一下可以复制。中间那串就是你的 **device key**。
+3. **填进配置**：
+
+   - 本地运行 → `config.yaml` 的 `notify.url`
+   - GitHub Actions → 仓库 Secret `BARK_URL`（不要写进 `config.ci.*.yaml`，那个文件会进仓库）
+
+   末尾的斜杠有没有都行，程序会自己去掉：
+
+   ```yaml
+   notify:
+     type: "bark"
+     url: "https://api.day.app/你的key"
+   ```
+4. **测一下通不通**（不跑监控，直接发一条）：
+
+   ```bash
+   curl -X POST https://api.day.app/你的key \
+     -H 'Content-Type: application/json' \
+     -d '{"title":"测试","body":"来自 qnyz-monitor"}'
+   ```
+
+   返回 `{"code":200,...}` 且手机收到通知就算通了。推送会归到「青年驿站」这个分组下（`notifier.py` 里写死的 `group`），在 Bark App 里可以按分组折叠。
+
+> **key 就是推送权限**：任何人拿到它都能往你手机推消息。别提交进仓库、别截图带出去。真泄露了就在 Bark App 里点「重置设备 key」（或删掉重装），旧 key 立刻失效，记得同步更新配置和 Secret。
+>
+> 想完全自己掌控可以自建 [bark-server](https://github.com/Finb/bark-server)，把 `notify.url` 换成自己的域名即可，格式一样。
+
+### 其他渠道
+
+`notify.type` 改成对应值，`notify.url` 填对应地址即可：
+
+| `notify.type` | `notify.url` 填什么                               |
+| --------------- | --------------------------------------------------- |
+| `bark`        | `https://api.day.app/<你的key>`                   |
+| `serverchan`  | `https://sctapi.ftqq.com/<SENDKEY>.send`          |
+| `wecom`       | 企业微信群机器人的 webhook 完整地址                 |
+| `dingtalk`    | 钉钉群机器人的 webhook 完整地址                     |
+| `generic`     | 任何能接收`POST {"title":..., "text":...}` 的地址 |
+
+用 Actions 时，Secret 的名字仍然叫 `BARK_URL`（工作流里写死的），只是内容换成对应渠道的 webhook，同时改 `config.ci.*.yaml` 里的 `notify.type`。
 
 ---
 
@@ -74,7 +130,7 @@ pip install -r requirements.txt
 
 ```bash
 cp config.example.yaml config.yaml
-# 编辑 config.yaml：填 notify.url（如 Bark key），按需设置 filters
+# 编辑 config.yaml：填 notify.url（Bark 地址怎么拿见上面「通知渠道」），按需设置 filters
 ```
 
 `config.yaml` 在 `.gitignore` 里，不会被提交。本地独有的两个字段：
@@ -132,64 +188,70 @@ python app.py                 # 默认 http://127.0.0.1:8765
 ## 搭建步骤
 
 1. **Fork 或使用本仓库**（你自己的账号下）。
-
 2. **添加 Bark（或其他 Webhook）地址为仓库 Secret**，名字必须是 `BARK_URL`：
+
    ```bash
    gh secret set BARK_URL --repo <你的用户名>/qnyz-monitor --body "https://api.day.app/<你的key>"
    ```
+
    或网页：仓库 → Settings → Secrets and variables → Actions → New repository secret，Name 填 `BARK_URL`。
+
    > Secret 加密存储、不可读回、不进代码；工作流运行时注入为环境变量 `QNYZ_NOTIFY_URL`。
    > 用其他通知渠道：把 `BARK_URL` 填成对应 webhook，并在对应 `config.ci.*.yaml` 改 `notify.type`（bark/serverchan/wecom/dingtalk/generic）。
-
+   >
 3. **改监控条件**：编辑对应的 `config.ci.*.yaml`，`git push` 即生效。写法见下面「[`config.ci.*.yaml` 怎么写](#configciyaml-怎么写)」。
-
 4. **定时怎么来**：见下面「[定时触发](#定时触发首选外部服务schedule-是替代方案)」——二选一，**首选**外部定时服务调 API（准点、可 5 分钟一次），用不了再换成 GitHub 自带 `schedule`。
-
 5. **手动跑一次**：
+
    ```bash
    gh workflow run monitor.yml --repo <你的用户名>/qnyz-monitor
    ```
-   也可在仓库 **Actions** 页面点 Run workflow。
 
+   也可在仓库 **Actions** 页面点 Run workflow。
 6. **暂停 / 恢复推送**：**去定时服务（cron-job.org）里把那条任务 Pause**。它是唯一的定时源（`schedule` 注释停用中），掐掉源头最干净，GitHub 侧不留任何痕迹，恢复时点回来即可。
 
    不要用 `gh workflow disable` 来做常规暂停：workflow 被停用后，定时服务的调用会收到 **403 "This workflow is disabled"**，那边的任务一直标红、失败次数累积，长期下去可能被定时服务自己关掉。它只适合当强制闸门——你不方便动定时服务，或怀疑还有别的东西在触发这个 workflow：
+
    ```bash
    gh workflow disable monitor.yml --repo <你的用户名>/qnyz-monitor   # 强制停用
    gh workflow enable  monitor.yml --repo <你的用户名>/qnyz-monitor   # 恢复
    ```
+
    彻底不用了：删掉定时服务的任务，并去 GitHub 设置里 **Revoke 那个 PAT**。
 
    > 暂停超过 **7 天**，Actions 缓存里的去重状态会被 GitHub 清理（缓存 7 天未访问即淘汰）。恢复后的第一轮会把当时所有符合条件的驿站当成新增，一次性推给你。
+   >
 
 ## 定时触发：首选外部服务，schedule 是替代方案
 
 两种定时方式，**二选一**，本仓库当前用的是外部服务：
 
-| | 入口 | 间隔 | 准点吗 | 当前状态 |
-|---|---|---|---|---|
-| **首选** 外部定时服务 | `workflow_dispatch` | 自己定，可低至 **5 分钟** | 准点 | 启用 |
-| **替代** GitHub `schedule` | `schedule` | 每小时（`23 * * * *`） | 不保证，常延迟甚至整轮跳过 | 注释停用 |
+|                                    | 入口                  | 间隔                           | 准点吗                     | 当前状态 |
+| ---------------------------------- | --------------------- | ------------------------------ | -------------------------- | -------- |
+| **首选** 外部定时服务        | `workflow_dispatch` | 自己定，可低至**5 分钟** | 准点                       | 启用     |
+| **替代** GitHub `schedule` | `schedule`          | 每小时（`23 * * * *`）       | 不保证，常延迟甚至整轮跳过 | 注释停用 |
 
 没必要两条都开——同时开只是多跑几遍（去重状态共用，不会重复推）。
 
 ### 首选：外部定时服务调 GitHub API
 
 1. **创建细粒度 PAT**：https://github.com/settings/personal-access-tokens/new
+
    - Repository access → Only select repositories → 选本仓库
    - Permissions → Repository permissions → **Actions: Read and write**（其他都不给）
    - 生成后复制 `github_pat_...`（只显示一次）
-
 2. **在定时服务里建任务**（如 https://cron-job.org ，免费）：
 
-   | 项 | 值 |
-   |---|---|
-   | URL | `https://api.github.com/repos/<你的用户名>/qnyz-monitor/actions/workflows/monitor.yml/dispatches` |
-   | Method | `POST` |
-   | Schedule | **每 5 分钟**（想更省可以放到 10 分钟） |
-   | Body | `{"ref":"main"}` |
+   | 项       | 值                                                                                                  |
+   | -------- | --------------------------------------------------------------------------------------------------- |
+   | URL      | `https://api.github.com/repos/<你的用户名>/qnyz-monitor/actions/workflows/monitor.yml/dispatches` |
+   | Method   | `POST`                                                                                            |
+   | Schedule | **每 5 分钟**（想更省可以放到 10 分钟）                                                       |
+   | Body     | `{"ref":"main"}`                                                                                  |
 
    Request headers：
+
+
    ```
    Accept: application/vnd.github+json
    Authorization: Bearer github_pat_你的token
@@ -269,6 +331,7 @@ CI 特有的几个坑（字段含义见「[监控条件](#监控条件两种用�
 - `config.ci.b.yaml` — B 组
 
 **增删组**：在 `.github/workflows/monitor.yml` 的 `matrix.include` 里加/减一项，并配一个对应的 `config.ci.<名>.yaml`：
+
 ```yaml
 matrix:
   include:
@@ -279,9 +342,11 @@ matrix:
     # - name: C            # 再加一组就照这样加
     #   config: config.ci.c.yaml
 ```
+
 > 各组推送标题自带入住/离店日期，手机上可区分是哪组。
 
 **说明与注意：**
+
 - 去重状态 `state.json` 用 `actions/cache` 跨次保存（滚动缓存），因此定时版同样"只推新增、不重复"；每组用独立缓存 key（`qnyz-state-<组名>-`）。缓存与触发方式无关，换成 `schedule` 也接着用同一份状态。
 - 工作流有 `concurrency: qnyz-monitor` 且 `cancel-in-progress: false`：上一轮还没跑完就来了新触发时会排队串行，不会并发写同一份缓存。5 分钟一次的间隔远大于单轮耗时（约 1 分钟），正常不会排队。
 - `verify_ssl: false`：CI 环境拿的是公开只读数据，关掉证书校验以规避潜在证书链问题；本地要校验可在 `config.yaml` 单独设置。
@@ -303,8 +368,7 @@ matrix:
 
 ## 字段说明（housListBatch 返回）
 
-`id, xmid, name(驿站名), dizhi(地址), lxfs(电话), district(区域), houseCount(总房间数),
-zujin(租金), mianji(面积), peitaosheshi(配套), blurb(简介), longitude/latitude, isOnShelf(是否上架), …`
+`id, xmid, name(驿站名), dizhi(地址), lxfs(电话), district(区域), houseCount(总房间数), zujin(租金), mianji(面积), peitaosheshi(配套), blurb(简介), longitude/latitude, isOnShelf(是否上架), …`
 
 日历 `calendar` 返回 `[{applyDate, applyNumber}, ...]`，`applyNumber>0` 即该日期可预约。
 
