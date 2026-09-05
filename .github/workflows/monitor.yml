@@ -35,8 +35,8 @@ jobs:
           - name: A            # 入住 9/5 → 离店 9/12，只盯友间宁国路
             config: config.ci.a.yaml
           # 暂停：恢复时取消下面两行注释
-          # - name: B
-          #   config: config.ci.b.yaml
+          - name: B
+            config: config.ci.b.yaml
     name: check-${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
